@@ -10,6 +10,7 @@ use `http.Request` and `http.Response` in go standard module
 
 __use module__ :
 * `net/http`
+* `encoding/json`
 
 __details__ :
 
@@ -119,4 +120,121 @@ type ResponseMatcher struct {
 ```
 
 (modules/caddyhttp/routes.go)
+
+```go
+type Route struct {
+	Group          string         `json:"group,omitempty"`
+	MatcherSetsRaw RawMatcherSets `json:"matcher_sets,omitempty" caddy:"namespace=http.matchers"`
+	HandlersRaw    []json.RawMessage
+	Terminal       bool                `json:"terminal,omitempty"`
+	MatcherSets    MatcherSets         `json:"-"`
+	Handler        []MiddlewareHandler `json:"-"`
+	middleware     []Middleware
+}
+```
+`Route` consists of a set of rules for matching HTTP requests,
+a list of handler to execute, and optional flow control
+parameters which customize the handling of HTTP requests
+in highly flexible and performant manner.
+
+__Fields__ : 
+
+* `Group` :
+
+Group is an optional name for a group to which this
+route belongs. Grouping a route makes it mutually
+exclusive with others in its group; if a route belongs
+to a group, only the first matching route in that group 
+will be executed.
+
+* `MatcherSetsRaw` :
+
+The matcher sets which will be used to qualify this 
+route for a request (essentially the "if" statement of this route).
+Each matcher set is OR'ed, but matchers within a set are AND'ed together.
+
+(modules/caddyhttp/routes.go)
+```go
+type RawMatcherSets []caddy.ModuleMap
+```
+Is a group of matcher sets in their raw, JSON from.
+
+(caddy.go)
+```go
+type ModuleMap map[string]json.RawMessage
+```
+Is a map that can contain multiple modules,
+where the map key is the module's name. 
+(The namespace is usually read from an associated field's struct tag.)
+Because the module's name is given as the key in a module map,
+the name does not have to be given in the `json.RawMessage`.
+
+
+* `HandlerRaw` : 
+
+The list of handlers for this route. Upon matching a request, they are chained
+together in a middleware fashion: requests flow from the first handler to the last 
+(top of the list to the bottom), 
+with the possibility that any handler could stop
+the chain and/or return an error. Response flow back through the chain (bottom of the list to the top) as they are written out to the client.
+
+Not all handlers call the next handler in the chain. For example, the `reverse_proxy` handler always sends a request upstream or returns an error. Thus, configuring handlers after `reverse_proxy` int the same route is illogical, since they would never be executed. You will want to put handlers which originate the response at the very end of your route(s). 
+
+Some handlers manipulate the response. Remember that requests flow down the list, and responses flow up the list.
+
+For example, if you wanted to use both `templates` and `encode` handlers, you would need to put `templates` after `encode` in your route, because responses flow up. 
+Thus, `templates` will be able to parse and execute the plain-text response as a template, and then return it up to the `encode` handler, which will then compress it into a binary format.
+
+If `templates` came before `encode`, then `encode` would write a compressed, binary-encoded response to `templates` which would not be able to parse the response properly.
+
+The correct order, then, is this:
+```
+[
+	{"handler": "encode"},
+	{"handler": "templates"},
+	{"handler": "file_server"},
+]
+```
+
+The request flow down (`encode` -> `templates` -> `file_server`).
+
+1. First, `encode` will choose how to `encode` the response and warp the response.
+2. Then, `templates` will warp the response with a buffer.
+3. Finally, `file_server` will originate the content from a file.
+
+The response flow up (`file_server` -> `templates` -> `encode`): 
+
+1. First, `file_server` will write the file to the response.
+2. That write will be buffered and then executed by `templates`.
+3. Lastly, the write from `templates` will flow into `encode` which will compress the stream.
+
+* `Terminal` :
+If true, no more routes will be executed after this one.
+
+* `MatcherSets`
+```go
+type MatcherSets []MatcherSet
+type MatcherSet  []RequestMatcher
+```
+`MatcherSet` is a set of matchers which
+must all match in order for the request 
+to be matched successfully.
+
+__Router Functions__ :
+
+* Empty()
+* String()
+
+---
+
+```go
+type RouteList []Route
+```
+A list of server routes that can create a middleware chain.
+
+__RouterList Functions__ : 
+
+
+
+
 
