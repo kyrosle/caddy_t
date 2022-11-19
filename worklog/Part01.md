@@ -17,14 +17,16 @@ __details__ :
 
 (modules/caddyhttp/caddyhttp.go)
 
-`RequestMatcher` is to match a request
+## `RequestMatcher`
+Is to match a request
 ```go
 type RequestMatcher interface {
 	Match(*http.Request) bool
 }
 ```
 
-`Handler` is similar to `http.Handler`, but it may return `error`
+### `Handler` 
+Is similar to `http.Handler`, but it may return `error`
 ```go
 type Handler interface {
 	ServerHttp(http.ResponseWriter, *http.Request) error
@@ -48,7 +50,8 @@ func (f HandlerFunc) ServerHttp(w http.ResponseWriter, r *http.Request) error {
 type Middleware func(Handler) Handler
 ```
 
-`MiddlewareHandler` like a `Handler` with a third argument => `next Handler`
+### `MiddlewareHandler`
+like a `Handler` with a third argument => `next Handler`
 which never be nil, but may be no operation if this is the last handler in the chain.
 __Handlers__ which act as middleware should call the next handler's `ServerHttp` method
 so as to propagate the request down the chain properly.
@@ -65,7 +68,7 @@ type MiddlewareHandler interface {
 var emptyHandler Handler = HandlerFunc(func(http.ResponseWriter, *http.Request) error { return nil })
 ```
 
-(modules/caddyhttp/error.go)
+#### `HandlerError` (modules/caddyhttp/error.go)
 
 `HandlerError` is a serializable representation of the an error from within a HTTP handler
 ```go
@@ -102,7 +105,7 @@ var errorEmptyHandler Handler = HandlerFunc(func(w http.ResponseWriter, r *http.
 
 ---
 
-(modules/caddyhttp/responsematchers.go)
+#### `ResponseMatcher` (modules/caddyhttp/responsematchers.go)
 
 `ResponseMatcher` is a type which can determine if an HTTP response matches some criteria
 ```go
@@ -119,8 +122,7 @@ type ResponseMatcher struct {
 }
 ```
 
-(modules/caddyhttp/routes.go)
-
+#### `Route` (modules/caddyhttp/routes.go)
 ```go
 type Route struct {
 	Group          string         `json:"group,omitempty"`
@@ -137,7 +139,7 @@ a list of handler to execute, and optional flow control
 parameters which customize the handling of HTTP requests
 in highly flexible and performant manner.
 
-__Fields__ : 
+__Route Fields__ : 
 
 * `Group` :
 
@@ -168,7 +170,6 @@ where the map key is the module's name.
 (The namespace is usually read from an associated field's struct tag.)
 Because the module's name is given as the key in a module map,
 the name does not have to be given in the `json.RawMessage`.
-
 
 * `HandlerRaw` : 
 
@@ -212,6 +213,7 @@ The response flow up (`file_server` -> `templates` -> `encode`):
 If true, no more routes will be executed after this one.
 
 * `MatcherSets`
+
 ```go
 type MatcherSets []MatcherSet
 type MatcherSet  []RequestMatcher
@@ -227,13 +229,100 @@ __Router Functions__ :
 
 ---
 
+#### `RouteList` (modules/caddyhttp/routes.go)
 ```go
 type RouteList []Route
 ```
-A list of server routes that can create a middleware chain.
+* A list of server routes that can create a middleware chain.
 
-__RouterList Functions__ : 
+__RoutList Functions__ :
 
+* Provision(ctx caddy.Context) error
+
+`Provision` sets up both the matchers and handlers in the routes.
+
+* ProvisionMatchers(ctx caddy.Context) error 
+
+`ProvisionMatchers` sets up all the matchers by loading the
+matcher modules. Only call this method directly if you need 
+to set up matchers and handlers separately without having 
+to provision a second time; otherwise use Provision instead.
+
+##### `Context` (caddy.go)
+```go
+type Context struct {
+	context.Context
+	moduleInstances map[string][]Module
+	cfg 			*Config
+	cleanupFuncs 	[]func()
+	ancestry 		[]Module
+}
+```
+`Context` is a type which defines the lifetime of modules that
+are loaded and provides access to the parent configuration
+that spawned the modules which are loaded. It should be used
+standard context package only if you don't need the Caddy
+specified features. These contexts are canceled when the 
+lifetime of the modules loaded from it is over.
+
+Use `NewContext()` to get a valid value (but most modules will
+not actually need to do this).
+
+__Context Fields__ :
+* `Module` type :
+```go
+type Module interface {
+	// This method indicates that the type is a Caddy module.
+	// The returned ModuleInfo must have both a name and a constructor function.
+	// This method must not have any side-effects.
+	CaddyModule() ModuleInfo
+}
+```
+`Module` is a type that is used as a Caddy module. 
+In addition to this interface, most modules will implement some 
+interface expected by their host module in order to be useful.
+To learn which interface(s) to implement,
+see the documentation for the host module. At a bare minimum,
+this interface, when implemented, only provides the module's ID and 
+constructor function. 
+
+`Module` will often implement additional interfaces
+including `Provisioner`, `Validator`, and `CleanerUpper`.
+If a module implements these interfaces, their methods are called
+during the module's lifespan.
+
+When a module is loaded by a host module, the following happens: 
+1. `ModuleInfo.New()` is called to get a new instance of the module.
+2. The module's configuration is unmarshalled into that instance.
+3. If the module is a `Provisioner` the `Provision()` method is called.
+4. If the module is a `Validator` the `Validate()` method is called.
+5. The module will probably be type-asserted from `any` to some other, 
+more useful interface expected by the host module. For example, HTTP handler
+modules are type-asserted as `caddyhttp.MiddlewareHandler` values.
+6. When a module's containing Context is canceled, if it is a `CleanerUpper`, 
+its `Cleaner()` method is called.
+
+```go
+type ModuleInfo struct {
+	ID  ModuleID
+	New func() Module
+}
+```
+`ModuleInfo` represents a registered Caddy module.
+
+
+
+
+__Context Functions__ : 
+* `NewContext()`
+
+`NewContext` provides a new context derived from the given
+context ctx. Normally, you will not need to call this
+function unless you are loading modules which have a
+module was provisioned with. Be sure to call the cancel
+func when the context is to be cleaned up so that
+modules which are loaded will be properly unloaded.
+See standard library context package's documentation.
 
 
 

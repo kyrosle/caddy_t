@@ -1,8 +1,11 @@
 package caddy
 
 import (
+	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/caddyserver/certmagic"
 )
 
 type Duration time.Duration
@@ -16,5 +19,15 @@ type Config struct {
 	Logging *Logging     `json:"logging,omitempty"`
 
 	StorageRaw json.RawMessage `json:"storage,omitempty" caddy:"namespace=caddy.storage inline_key=module"`
-	AppsRaw ModuleMap `json:"admin,omitempty" caddy:"namespace="`
+	AppsRaw    ModuleMap       `json:"apps,omitempty" caddy:"namespace="`
+
+	apps       map[string]App
+	storage    certmagic.Storage
+	cancelFunc context.CancelFunc
+}
+
+
+type App interface {
+	Start() error
+	Stop() error
 }

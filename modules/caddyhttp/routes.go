@@ -43,6 +43,23 @@ func (r Route) String() string {
 
 type RouterList []Route
 
-// func (routes RouterList) Provision(ctx caddy.Context) error {
-// }
+func (routes RouterList) Provision(ctx caddy.Context) error {
+	err := routes.ProvisionMatchers(ctx)
+	if err != nil {
+		return err
+	}
+	return routes.ProvisionHandlers(ctx, nil)
+}
 
+func (routes RouterList) ProvisionMatchers(ctx caddy.Context) error {
+	for i := range routes {
+		matchersIface, err := ctx.LoadMoudle(&routes[i], "MatcherSetsRaw")
+		if err != nil {
+			return fmt.Errorf("route %d: loading matcher moudles: %v", i, err)
+		}
+		err = routes[i].MatcherSets.FromInterface(matchersIface)
+		if err != nil {
+			return fmt.Errorf("route %d: %v", i, err)
+		}
+	}
+}
