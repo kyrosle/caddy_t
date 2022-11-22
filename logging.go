@@ -10,8 +10,8 @@ import (
 )
 
 type Logging struct {
-	Sink       *StandardLibLog
-	Logs       map[string]*CustomLog
+	Sink       *StandardLibLog       `json:"sink,omitempty"`
+	Logs       map[string]*CustomLog `json:"logs,omitempty"`
 	writerKeys []string
 }
 
@@ -36,11 +36,13 @@ type CustomLog struct {
 }
 
 type LogSampling struct {
-	Interval   time.Duration
-	First      int
-	Thereafter int
+	Interval   time.Duration `json:"interval,omitempty"`
+	First      int           `json:first,omitempty"`
+	Thereafter int           `json:thereafter,omitempty"`
 }
 
 type WriterOpener interface {
 	fmt.Stringer
+	WriterKey() string
+	OpenWriter() (io.WriteCloser, error)
 }

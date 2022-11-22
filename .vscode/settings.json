@@ -1,7 +1,11 @@
 {
     "go.inferGopath": false,
     "cSpell.words": [
+        "caddyhttp",
         "certmagic",
+        "Funcs",
+        "omitempty",
+        "responsematchers",
         "struct",
         "unmarshalled",
         "zapcore"
